@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use atomic_counter::{AtomicCounter, RelaxedCounter};
 use exonum::messages::to_hex_string;
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
 use lockfree::channel::spmc::{create, Sender};
 use log::{error, info};
 use logger::init_custom_logger;
 use serde_json::json;
-use std::thread;
+use std::{ops::Deref, sync::Arc, thread};
 use structopt::StructOpt;
 
 mod generator;
@@ -63,7 +64,9 @@ impl Options {
             }
         };
         for t in gen.take(self.count as usize) {
-            let _ = tx.send(t).expect("Couldn't send message");
+            if let Err(e) = tx.send(t) {
+                error!("{}", e.message);
+            }
         }
     }
 }
@@ -83,7 +86,17 @@ enum Transaction {
     },
 }
 
-fn post_transaction(client: &reqwest::Client, url: &str, tx: serde_json::Value) {
+fn post_transaction(
+    client: &reqwest::Client,
+    url: &str,
+    tx: serde_json::Value,
+    counter: &RelaxedCounter,
+) {
+    let tx_count = counter.inc();
+    if tx_count % 10000 == 0 && tx_count > 0 {
+        println!("10000 transactions were sent");
+    }
+
     info!("tx: {}", &tx);
     let _ = client
         .post(url)
@@ -108,15 +121,17 @@ fn main() {
         opts.generator(&mut tx);
     });
 
+    let counter = Arc::new(RelaxedCounter::new(0)); // Arc::new(AtomicUsize::new(0));
     let mut handlers = Vec::new();
 
     for host in hosts {
+        let counter_ref = counter.clone();
         let tx_url = format!("http://{}/api/explorer/v1/transactions", host);
         let client = reqwest::Client::new();
         let tx_channel = rx.clone();
         handlers.push(thread::spawn(move || {
             while let Ok(tx) = tx_channel.recv() {
-                post_transaction(&client, &tx_url, tx);
+                post_transaction(&client, &tx_url, tx, counter_ref.deref());
             }
         }));
     }
