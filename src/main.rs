@@ -15,8 +15,8 @@
 use atomic_counter::{AtomicCounter, RelaxedCounter};
 use exonum::messages::to_hex_string;
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
-use lockfree::channel::spmc::{create, Sender};
-use log::{error, info};
+use lockfree::channel::spmc::{create, RecvErr, Sender};
+use log::{error, info, warn};
 use logger::init_custom_logger;
 use serde_json::json;
 use std::{ops::Deref, sync::Arc, thread};
@@ -129,9 +129,13 @@ fn main() {
         let tx_url = format!("http://{}/api/explorer/v1/transactions", host);
         let client = reqwest::Client::new();
         let tx_channel = rx.clone();
-        handlers.push(thread::spawn(move || {
-            while let Ok(tx) = tx_channel.recv() {
-                post_transaction(&client, &tx_url, tx, counter_ref.deref());
+        handlers.push(thread::spawn(move || loop {
+            match tx_channel.recv() {
+                Ok(tx) => post_transaction(&client, &tx_url, tx, counter_ref.deref()),
+                Err(e) => match e {
+                    RecvErr::NoMessage => warn!("No message"),
+                    RecvErr::NoSender => break,
+                },
             }
         }));
     }
