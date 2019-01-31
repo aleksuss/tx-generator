@@ -21,6 +21,7 @@ use logger::init_custom_logger;
 use serde_json::json;
 use std::{ops::Deref, sync::Arc, thread};
 use structopt::StructOpt;
+use std::time::Duration;
 
 mod generator;
 mod logger;
@@ -38,6 +39,12 @@ struct Options {
     /// A transactions count.
     #[structopt(short = "a", long = "api", help = "Backend API")]
     api_hosts: Vec<String>,
+    #[structopt(
+        short = "t",
+        long = "timeout",
+        help = "A delay between sending transactions in microseconds"
+    )]
+    timeout: Option<u64>,
     #[structopt(subcommand)]
     transaction: Transaction,
 }
@@ -91,10 +98,15 @@ fn post_transaction(
     url: &str,
     tx: serde_json::Value,
     counter: &RelaxedCounter,
+    timeout: Option<u64>,
 ) {
     let tx_count = counter.inc();
     if tx_count % 10000 == 0 && tx_count > 0 {
         println!("10000 transactions were sent");
+    }
+
+    if let Some(timeout) = timeout {
+        thread::sleep(Duration::from_micros(timeout));
     }
 
     info!("tx: {}", &tx);
@@ -116,6 +128,7 @@ fn main() {
 
     let (mut tx, rx) = create::<serde_json::Value>();
     let hosts = opts.api_hosts.clone();
+    let timeout = opts.timeout;
 
     let gen_handler = thread::spawn(move || {
         opts.generator(&mut tx);
@@ -131,7 +144,7 @@ fn main() {
         let tx_channel = rx.clone();
         handlers.push(thread::spawn(move || loop {
             match tx_channel.recv() {
-                Ok(tx) => post_transaction(&client, &tx_url, tx, counter_ref.deref()),
+                Ok(tx) => post_transaction(&client, &tx_url, tx, counter_ref.deref(), timeout),
                 Err(e) => match e {
                     RecvErr::NoMessage => warn!("No message"),
                     RecvErr::NoSender => break,
