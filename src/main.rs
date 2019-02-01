@@ -13,18 +13,20 @@
 // limitations under the License.
 
 use atomic_counter::{AtomicCounter, RelaxedCounter};
+use crossbeam::channel::{bounded, Sender, TryRecvError};
 use exonum::messages::to_hex_string;
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
-use lockfree::channel::spmc::{create, RecvErr, Sender};
 use log::{error, info, warn};
 use logger::init_custom_logger;
 use serde_json::json;
+use std::time::Duration;
 use std::{ops::Deref, sync::Arc, thread};
 use structopt::StructOpt;
-use std::time::Duration;
 
 mod generator;
 mod logger;
+
+const CHANNEL_SIZE: usize = 500_000;
 
 /// Generate hex encoded list of transactions.
 #[derive(Debug, StructOpt)]
@@ -50,7 +52,7 @@ struct Options {
 }
 
 impl Options {
-    pub fn generator(&self, tx: &mut Sender<serde_json::Value>) {
+    pub fn generator(&self, tx: Sender<serde_json::Value>) {
         let gen = match self.transaction {
             Transaction::CreateWallet => {
                 let gen = CreateWalletGenerator::new(self.seed)
@@ -72,7 +74,7 @@ impl Options {
         };
         for t in gen.take(self.count as usize) {
             if let Err(e) = tx.send(t) {
-                error!("{}", e.message);
+                error!("{}", e);
             }
         }
     }
@@ -126,15 +128,15 @@ fn main() {
     let opts = Options::from_args();
     println!("Seed: {}. Transaction count: {}.", opts.seed, opts.count);
 
-    let (mut tx, rx) = create::<serde_json::Value>();
+    let (tx, rx) = bounded::<serde_json::Value>(CHANNEL_SIZE);
     let hosts = opts.api_hosts.clone();
     let timeout = opts.timeout;
 
     let gen_handler = thread::spawn(move || {
-        opts.generator(&mut tx);
+        opts.generator(tx);
     });
 
-    let counter = Arc::new(RelaxedCounter::new(0)); // Arc::new(AtomicUsize::new(0));
+    let counter = Arc::new(RelaxedCounter::new(0));
     let mut handlers = Vec::new();
 
     for host in hosts {
@@ -143,11 +145,11 @@ fn main() {
         let client = reqwest::Client::new();
         let tx_channel = rx.clone();
         handlers.push(thread::spawn(move || loop {
-            match tx_channel.recv() {
+            match tx_channel.try_recv() {
                 Ok(tx) => post_transaction(&client, &tx_url, tx, counter_ref.deref(), timeout),
                 Err(e) => match e {
-                    RecvErr::NoMessage => warn!("No message"),
-                    RecvErr::NoSender => break,
+                    TryRecvError::Empty => warn!("No messages"),
+                    TryRecvError::Disconnected => break,
                 },
             }
         }));
