@@ -2,7 +2,11 @@
 
 # This scripts outputs TPS stats in runtime
 # Run example: ./tx_stats.py node.hostname.com:8080
+# Also possible to dump statistic into cvs files if you provide
+# path to file
+# E.g. ./tx_stats.py node.hostname.com:8080 /path/to/stat.cvs
 
+import csv
 import requests
 import sys
 from datetime import datetime
@@ -22,8 +26,10 @@ def get_hostname():
 
 
 def parse_datetime(d_time):
-    d_time_parts = d_time[:-1].split('.')
-    return datetime.strptime(d_time_parts[0] + '.' + d_time_parts[1][:5], "%Y-%m-%dT%H:%M:%S.%f")
+    d_time_parts = d_time[:-1].split(".")
+    return datetime.strptime(
+        d_time_parts[0] + "." + d_time_parts[1][:5], "%Y-%m-%dT%H:%M:%S.%f"
+    )
 
 
 def update_stats(stats, data):
@@ -72,6 +78,14 @@ def calc_current_tps(data):
     return int(data["blocks"][0]["tx_count"] / delta_time.total_seconds())
 
 
+def dump_statistic(file, stats):
+    with open(file, "w") as f:
+        w = csv.DictWriter(f, ["height", "TPS"])
+        w.writeheader()
+        for height in sorted(stats.keys()):
+            w.writerow({"height": height, "TPS": stats[height]})
+
+
 def main():
     hostname = get_hostname()
     blocks_url = "{}/api/explorer/v1/blocks?count={}&add_blocks_time=true".format(
@@ -105,7 +119,10 @@ def main():
 
         except KeyboardInterrupt:
             print("Exit...")
-            exit(0)
+            break
+
+    if len(sys.argv) > 2:
+        dump_statistic(sys.argv[2], stats)
 
 
 if __name__ == "__main__":
