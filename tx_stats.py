@@ -140,32 +140,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# [Unit]
-# Description=Blockchain heights monitoring
-# Wants=network-online.target
-# After=network-online.target
-
-# [Service]
-# User=prometheus
-# Group=prometheus
-# Type=simple
-# ExecStart=/usr/local/bin/heights.py
-
-# [Install]
-# WantedBy=multi-user.target
-
-# [Unit]
-# Description=Prometheus Push Gateway
-# Wants=network-online.target
-# After=network-online.target
-
-# [Service]
-# User=prometheus
-# Group=prometheus
-# Type=simple
-# ExecStart=/usr/local/bin/pushgateway \
-#     --persistence.file /var/lib/pushgateway/metrics.log
-
-# [Install]
-# WantedBy=multi-user.target
