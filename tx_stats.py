@@ -2,7 +2,11 @@
 
 # This scripts outputs TPS stats in runtime
 # Run example: ./tx_stats.py node.hostname.com:8080
+# Also possible to dump statistic into cvs files if you provide
+# path to file
+# E.g. ./tx_stats.py node.hostname.com:8080 /path/to/stat.cvs
 
+import csv
 import requests
 import sys
 from datetime import datetime
@@ -21,8 +25,10 @@ def get_hostname(h):
 
 
 def parse_datetime(d_time):
-    d_time_parts = d_time[:-1].split('.')
-    return datetime.strptime(d_time_parts[0] + '.' + d_time_parts[1][:5], "%Y-%m-%dT%H:%M:%S.%f")
+    d_time_parts = d_time[:-1].split(".")
+    return datetime.strptime(
+        d_time_parts[0] + "." + d_time_parts[1][:5], "%Y-%m-%dT%H:%M:%S.%f"
+    )
 
 
 def update_stats(stats, data):
@@ -71,11 +77,20 @@ def calc_current_tps(data):
     return int(data["blocks"][0]["tx_count"] / delta_time.total_seconds())
 
 
+def dump_statistic(file, stats):
+    with open(file, "w") as f:
+        w = csv.DictWriter(f, ["height", "TPS"])
+        w.writeheader()
+        for height in sorted(stats.keys()):
+            w.writerow({"height": height, "TPS": stats[height]})
+
+
 def main():
     parser = argparse.ArgumentParser(description='Exonum node\'s TPS stats collector')
     parser.add_argument('-s', '--service', action='store_true', help='Run as a system service and export metrics to Prometheus')
     parser.add_argument('-n', '--node', type=str, help='Exonum node\'s address', required=True)
     parser.add_argument('-p', '--pushgateway', nargs=1, type=str, help='Prometheus pushgateway address')
+    parser.add_argument('-o', '--output', nargs=1, type=str, help='File name to dump data as CSV')
 
     args = parser.parse_args()
 
@@ -129,13 +144,19 @@ def main():
                         end="\r",
                     )
             else:
-                print("Bad request")
+                print("Bad request", end="\r")
+
+        except requests.exceptions.ConnectionError:
+            print("Couldn't connect to host, Trying once again...", end="\r")
 
             sleep(1)
 
         except KeyboardInterrupt:
             print("Exit...")
-            exit(0)
+            break
+
+    if (args.output):
+        dump_statistic(args.output[0], stats)
 
 
 if __name__ == "__main__":
