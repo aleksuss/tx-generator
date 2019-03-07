@@ -116,6 +116,7 @@ def init_prometheus(hostname):
 
     metrics.registry = CollectorRegistry()
     metrics.grouping_keys = {}
+    metrics.hostname = hostname
     metric_current_tps_name = "exonum_node_tps_current"
     metric_avg_tps_name = "exonum_node_tps_average"
     metric_current_height_name = "exonum_node_current_height"
@@ -142,7 +143,7 @@ def send_data_to_prometheus(metrics, avrg_tps, current_tps, last_height):
         metrics.metric_current_tps.set(current_tps)
         metrics.metric_current_height.set(last_height)
         push_to_gateway(
-            args.pushgateway[0],
+            metrics.hostname,
             job="StressTesting",
             registry=metrics.registry,
             grouping_key=metrics.grouping_keys,
