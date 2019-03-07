@@ -96,24 +96,28 @@ def main():
 
     while True:
         try:
-            response = requests.get(blocks_url)
+            try:
+                response = requests.get(blocks_url)
 
-            if response.status_code == 200:
-                data = response.json()
-                update_stats(stats, data)
-                min_tps = calc_min_tps(stats)
-                max_tps = calc_max_tps(stats)
-                avrg_tps = calc_average_tps(stats)
-                current_tps = calc_current_tps(data)
-                last_height = int(data["range"]["end"])
-                print(
-                    "min: {}, max: {}, avrg: {}, current: {}, last height: {}".format(
-                        min_tps, max_tps, avrg_tps, current_tps, last_height
-                    ),
-                    end="\r",
-                )
-            else:
-                print("Bad request")
+                if response.status_code == 200:
+                    data = response.json()
+                    update_stats(stats, data)
+                    min_tps = calc_min_tps(stats)
+                    max_tps = calc_max_tps(stats)
+                    avrg_tps = calc_average_tps(stats)
+                    current_tps = calc_current_tps(data)
+                    last_height = int(data["range"]["end"])
+                    print(
+                        "min: {}, max: {}, avrg: {}, current: {}, last height: {}".format(
+                            min_tps, max_tps, avrg_tps, current_tps, last_height
+                        ),
+                        end="\r",
+                    )
+                else:
+                    print("Bad request", end="\r")
+
+            except requests.exceptions.ConnectionError:
+                print("Couldn't connect to host, Trying once again...", end="\r")
 
             sleep(1)
 
