@@ -109,14 +109,14 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def init_prometheus(hostname):
+def init_prometheus(prometheus_hostname, node_hostname):
     from prometheus_client import CollectorRegistry, Gauge
 
     metrics = Metrics()
 
     metrics.registry = CollectorRegistry()
     metrics.grouping_keys = {}
-    metrics.hostname = hostname
+    metrics.hostname = prometheus_hostname
     metric_current_tps_name = "exonum_node_tps_current"
     metric_avg_tps_name = "exonum_node_tps_average"
     metric_current_height_name = "exonum_node_current_height"
@@ -131,7 +131,7 @@ def init_prometheus(hostname):
     metrics.metric_current_tps = Gauge(
         metric_current_tps_name, "Exonum's node current TPS", registry=metrics.registry
     )
-    metrics.grouping_keys["instance"] = urlparse(hostname).netloc
+    metrics.grouping_keys["instance"] = urlparse(node_hostname).netloc
     return metrics
 
 
@@ -166,7 +166,7 @@ def main():
         exit(1)
 
     if args.pushgateway:
-        metrics = init_prometheus(hostname)
+        metrics = init_prometheus(args.pushgateway[0], hostname)
 
     while True:
         try:
