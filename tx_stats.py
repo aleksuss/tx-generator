@@ -22,7 +22,8 @@ def get_hostname():
 
 
 def parse_datetime(d_time):
-    return datetime.strptime(d_time[:-4], "%Y-%m-%dT%H:%M:%S.%f")
+    d_time_parts = d_time[:-1].split('.')
+    return datetime.strptime(d_time_parts[0] + '.' + d_time_parts[1][:5], "%Y-%m-%dT%H:%M:%S.%f")
 
 
 def update_stats(stats, data):
