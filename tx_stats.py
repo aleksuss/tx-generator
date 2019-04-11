@@ -35,7 +35,6 @@ def parse_datetime(d_time):
 
 
 def update_stats(stats, data):
-    times = data["times"]
     for i, block in enumerate(data["blocks"]):
         height = block["height"]
         tx_count = block["tx_count"]
@@ -48,7 +47,7 @@ def update_stats(stats, data):
         ):  # skip last block info, we won't be able to calculate time delta
             continue
         block_time = (
-            parse_datetime(times[i]) - parse_datetime(times[i + 1])
+            parse_datetime(block["time"]) - parse_datetime(data["blocks"][i + 1]["time"])
         ).total_seconds()
         stats[height] = tx_count / block_time
 
@@ -75,8 +74,7 @@ def calc_average_tps(stats):
 
 
 def calc_current_tps(data):
-    times = data["times"]
-    delta_time = parse_datetime(times[0]) - parse_datetime(times[1])
+    delta_time = parse_datetime(data["blocks"][0]["time"]) - parse_datetime(data["blocks"][1]["time"])
     return int(data["blocks"][0]["tx_count"] / delta_time.total_seconds())
 
 
