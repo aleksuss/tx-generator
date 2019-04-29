@@ -19,13 +19,18 @@ use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfi
 use log::{error, info, warn};
 use logger::init_custom_logger;
 use serde_json::json;
-use std::time::Duration;
-use std::{ops::Deref, sync::Arc, thread};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, SystemTime},
+};
 use structopt::StructOpt;
 
 mod generator;
 mod logger;
 
+const TX_AMOUNT: usize = 10_000;
 const CHANNEL_SIZE: usize = 500_000;
 
 /// Generate hex encoded list of transactions.
@@ -101,10 +106,20 @@ fn post_transaction(
     tx: serde_json::Value,
     counter: &RelaxedCounter,
     timeout: Option<u64>,
+    time: &Arc<Mutex<SystemTime>>,
 ) {
     let tx_count = counter.inc();
-    if tx_count % 10000 == 0 && tx_count > 0 {
-        println!("10000 transactions were sent");
+    if tx_count % TX_AMOUNT == 0 && tx_count > 0 {
+        let mut time = time.lock().unwrap();
+        let now = SystemTime::now();
+        let delta = now.duration_since(*time).unwrap();
+        *time = now;
+        println!(
+            "{} transactions were sent. Time: {} ms. RPS: {}",
+            TX_AMOUNT,
+            delta.as_millis(),
+            (TX_AMOUNT * 1_000) as u128 / delta.as_millis()
+        );
     }
 
     if let Some(timeout) = timeout {
@@ -136,17 +151,26 @@ fn main() {
         opts.generator(tx);
     });
 
+    let time = Arc::new(Mutex::new(SystemTime::now()));
     let counter = Arc::new(RelaxedCounter::new(0));
     let mut handlers = Vec::new();
 
     for host in hosts {
+        let time_ref = time.clone();
         let counter_ref = counter.clone();
         let tx_url = format!("http://{}/api/explorer/v1/transactions", host);
         let client = reqwest::Client::new();
         let tx_channel = rx.clone();
         handlers.push(thread::spawn(move || loop {
             match tx_channel.try_recv() {
-                Ok(tx) => post_transaction(&client, &tx_url, tx, counter_ref.deref(), timeout),
+                Ok(tx) => post_transaction(
+                    &client,
+                    &tx_url,
+                    tx,
+                    counter_ref.deref(),
+                    timeout,
+                    &time_ref,
+                ),
                 Err(e) => match e {
                     TryRecvError::Empty => warn!("No messages"),
                     TryRecvError::Disconnected => break,
