@@ -17,10 +17,11 @@ use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
 use exonum::crypto::{gen_keypair_from_seed, PublicKey, SecretKey, Seed};
-use exonum::messages::{Message, RawTransaction, Signed};
+use exonum::messages::{AnyTx, Signed};
+use exonum::runtime::rust::service::Transaction;
 use exonum_cryptocurrency_advanced::transactions::{CreateWallet, Transfer};
 
-const CRYPTOCURRENCY_SERVICE_ID: u16 = 128;
+const CRYPTOCURRENCY_SERVICE_ID: u32 = 1;
 
 #[derive(Clone)]
 pub struct KeypairGenerator {
@@ -53,14 +54,13 @@ impl CreateWalletGenerator {
 }
 
 impl Iterator for CreateWalletGenerator {
-    type Item = Signed<RawTransaction>;
+    type Item = Signed<AnyTx>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (pk, sk) = self.0.next().unwrap();
-        Some(Message::sign_transaction(
-            CreateWallet {
+        Some(CreateWallet {
                 name: pk.to_string(),
-            },
+            }.sign(
             CRYPTOCURRENCY_SERVICE_ID,
             pk,
             &sk,
@@ -108,7 +108,7 @@ impl TransferGenerator {
 }
 
 impl Iterator for TransferGenerator {
-    type Item = Signed<RawTransaction>;
+    type Item = Signed<AnyTx>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -123,8 +123,7 @@ impl Iterator for TransferGenerator {
             let to = self.gen_keypair(to as u64).0;
             let seed = self.rand.gen();
             let amount = self.rand.gen_range(1, 10);
-            return Some(Message::sign_transaction(
-                Transfer { to, amount, seed },
+            return Some(Transfer { to, amount, seed }.sign(
                 CRYPTOCURRENCY_SERVICE_ID,
                 pk,
                 &sk,
