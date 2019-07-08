@@ -21,7 +21,7 @@ use exonum::messages::{AnyTx, Signed};
 use exonum::runtime::rust::service::Transaction;
 use exonum_cryptocurrency_advanced::transactions::{CreateWallet, Transfer};
 
-const CRYPTOCURRENCY_SERVICE_ID: u32 = 1;
+const CRYPTOCURRENCY_SERVICE_ID: u32 = 2;
 
 #[derive(Clone)]
 pub struct KeypairGenerator {
