@@ -14,8 +14,9 @@
 
 use atomic_counter::{AtomicCounter, RelaxedCounter};
 use crossbeam::channel::{bounded, Sender, TryRecvError};
-use exonum::messages::to_hex_string;
+use exonum::exonum_merkledb::BinaryValue;
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
+use hex::encode;
 use log::{error, info, warn};
 use logger::init_custom_logger;
 use serde_json::json;
@@ -37,6 +38,9 @@ const CHANNEL_SIZE: usize = 500_000;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "tx-generator")]
 struct Options {
+    /// Service ID.
+    #[structopt(short = "i", long = "service_id", help = "Service ID.")]
+    service_id: u32,
     /// seed.
     #[structopt(short = "s", long = "seed", help = "Seed of random number generator.")]
     seed: u64,
@@ -60,8 +64,8 @@ impl Options {
     pub fn generator(&self, tx: Sender<serde_json::Value>) {
         let gen = match self.transaction {
             Transaction::CreateWallet => {
-                let gen = CreateWalletGenerator::new(self.seed)
-                    .map(|tx| json!({ "tx_body": to_hex_string(&tx) }));
+                let gen = CreateWalletGenerator::new(self.service_id, self.seed)
+                    .map(|tx| json!({ "tx_body": encode(tx.to_bytes()) }));
                 Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
             }
             Transaction::Transfer {
@@ -69,11 +73,12 @@ impl Options {
                 wallets_seed,
             } => {
                 let gen = TransferGenerator::new(TransferGeneratorConfig {
+                    service_id: self.service_id,
                     seed: self.seed,
                     wallets_count,
                     wallets_seed,
                 })
-                .map(|tx| json!({ "tx_body": to_hex_string(&tx) }));
+                .map(|tx| json!({ "tx_body": encode(tx.to_bytes()) }));
                 Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
             }
         };

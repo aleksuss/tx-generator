@@ -25,7 +25,7 @@ pub fn init_custom_logger() -> Result<(), SetLoggerError> {
     builder.format(format_log_record);
 
     if env::var("RUST_LOG").is_ok() {
-        builder.parse(&env::var("RUST_LOG").unwrap());
+        builder.parse_filters(&env::var("RUST_LOG").unwrap());
     }
 
     builder.try_init()
