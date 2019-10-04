@@ -18,7 +18,7 @@ use rand_xorshift::XorShiftRng;
 
 use exonum::crypto::{gen_keypair_from_seed, PublicKey, SecretKey, Seed};
 use exonum::messages::{AnyTx, Verified};
-use exonum::runtime::rust::service::Transaction;
+use exonum::runtime::rust::Transaction;
 use exonum_cryptocurrency_advanced::transactions::{CreateWallet, Transfer};
 
 #[derive(Clone)]
