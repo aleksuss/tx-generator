@@ -1,5 +1,7 @@
 # Transaction generator
 
+![Rust](https://github.com/aleksuss/tx-generator/workflows/Rust/badge.svg?branch=master)
+
 This utility used to emulate hi-load stream of transactions to
 Exonum Blockchain network with `cryptocurrency-advanced` service inside.
 
