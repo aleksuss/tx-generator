@@ -16,10 +16,13 @@ use byteorder::{ByteOrder, LittleEndian};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
-use exonum::crypto::{gen_keypair_from_seed, PublicKey, SecretKey, Seed};
+use exonum::crypto::{gen_keypair_from_seed, KeyPair, PublicKey, SecretKey, Seed};
 use exonum::messages::{AnyTx, Verified};
-use exonum::runtime::rust::Transaction;
-use exonum_cryptocurrency_advanced::transactions::{CreateWallet, Transfer};
+use exonum::runtime::CallerAddress;
+use exonum_cryptocurrency_advanced::{
+    transactions::{CreateWallet, Transfer},
+    CryptocurrencyInterface,
+};
 
 #[derive(Clone)]
 pub struct KeypairGenerator {
@@ -28,18 +31,20 @@ pub struct KeypairGenerator {
 
 impl KeypairGenerator {
     pub fn new(seed: u64) -> Self {
-        KeypairGenerator { seed }
+        Self { seed }
     }
 }
 
 impl Iterator for KeypairGenerator {
-    type Item = (PublicKey, SecretKey);
+    type Item = KeyPair;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buf = [0u8; 32];
+        let mut buf = [0_u8; 32];
         LittleEndian::write_u64(&mut buf, self.seed);
         self.seed = self.seed.overflowing_add(1).0;
-        Some(gen_keypair_from_seed(&Seed::new(buf)))
+        let (pk, sk) = gen_keypair_from_seed(&Seed::new(buf));
+
+        Some(KeyPair::from_keys(pk, sk))
     }
 }
 
@@ -61,13 +66,11 @@ impl Iterator for CreateWalletGenerator {
     type Item = Verified<AnyTx>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (pk, sk) = self.generator.next().unwrap();
-        Some(
-            CreateWallet {
-                name: pk.to_string(),
-            }
-            .sign(self.service_id, pk, &sk),
-        )
+        let keys = self.generator.next()?;
+        Some(keys.create_wallet(
+            self.service_id,
+            CreateWallet::new(&format!("{}", &keys.public_key())),
+        ))
     }
 }
 
@@ -87,7 +90,7 @@ pub struct TransferGenerator {
 }
 
 impl TransferGenerator {
-    pub fn new(conf: TransferGeneratorConfig) -> Self {
+    pub fn new(conf: &TransferGeneratorConfig) -> Self {
         assert!(conf.wallets_count > 1);
 
         let mut buf = [0; 16];
@@ -103,7 +106,7 @@ impl TransferGenerator {
     }
 
     fn gen_keypair(&self, offset: u64) -> (PublicKey, SecretKey) {
-        let mut buf = [0u8; 32];
+        let mut buf = [0_u8; 32];
         LittleEndian::write_u64(&mut buf, self.seed + offset);
         gen_keypair_from_seed(&Seed::new(buf))
     }
@@ -126,10 +129,12 @@ impl Iterator for TransferGenerator {
             }
 
             let (pk, sk) = self.gen_keypair(from as u64);
-            let to = self.gen_keypair(to as u64).0;
+            let keys = KeyPair::from_keys(pk, sk);
+            let to = CallerAddress::from_key(self.gen_keypair(to as u64).0);
             let seed = self.rand.gen();
             let amount = self.rand.gen_range(1, 10);
-            return Some(Transfer { to, amount, seed }.sign(self.service_id, pk, &sk));
+            let tx = keys.transfer(self.service_id, Transfer { to, amount, seed });
+            return Some(tx);
         }
     }
 }
@@ -145,7 +150,7 @@ fn test_wallets_generator() {
         .map(|tx| tx.author())
         .collect::<Vec<_>>();
 
-    let gen = TransferGenerator::new(TransferGeneratorConfig {
+    let gen = TransferGenerator::new(&TransferGeneratorConfig {
         service_id,
         seed: 2000,
         wallets_seed,
@@ -167,7 +172,7 @@ fn test_wallets_generator2() {
         .take(wallets_count)
         .collect::<Vec<_>>();
 
-    let gen = TransferGenerator::new(TransferGeneratorConfig {
+    let gen = TransferGenerator::new(&TransferGeneratorConfig {
         service_id,
         seed: 2000,
         wallets_seed,
@@ -184,7 +189,7 @@ fn test_wallets_generator2() {
 
 #[test]
 fn test_transfer_generator() {
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     let service_id = 1024;
     let wallets_count = 12500;
@@ -194,7 +199,7 @@ fn test_transfer_generator() {
 
     let wallet_gen = CreateWalletGenerator::new(service_id, wallets_seed);
 
-    let transfer_gen = TransferGenerator::new(TransferGeneratorConfig {
+    let transfer_gen = TransferGenerator::new(&TransferGeneratorConfig {
         service_id,
         seed,
         wallets_count,
@@ -204,12 +209,12 @@ fn test_transfer_generator() {
     let wallets = wallet_gen
         .map(|x| x.author())
         .take(wallets_count)
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     let txs = transfer_gen
-        .map(|x| x.serialize())
+        .map(|t| t.into_raw())
         .take(txs_count)
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     assert_eq!(wallets.len(), wallets_count);
     assert_eq!(txs.len(), txs_count);
