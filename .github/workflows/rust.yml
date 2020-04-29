@@ -55,7 +55,7 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v1
@@ -70,16 +70,7 @@ jobs:
         run: rustup component add clippy
 
       - name: Install protobuf
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-              sudo sudo add-apt-repository ppa:maarten-fonville/protobuf
-              sudo apt install protobuf-compiler
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-               brew install protobuf
-          else
-              echo "$RUNNER_OS not supported"
-              exit 1
-          fi
+        run: brew install protobuf
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
