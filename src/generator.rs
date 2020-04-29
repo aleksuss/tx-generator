@@ -15,8 +15,9 @@
 use byteorder::{ByteOrder, LittleEndian};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
+use std::time::Instant;
 
-use exonum::crypto::{gen_keypair_from_seed, KeyPair, PublicKey, SecretKey, Seed};
+use exonum::crypto::{KeyPair, Seed, SEED_LENGTH};
 use exonum::messages::{AnyTx, Verified};
 use exonum::runtime::CallerAddress;
 use exonum_cryptocurrency_advanced::{
@@ -25,12 +26,12 @@ use exonum_cryptocurrency_advanced::{
 };
 
 #[derive(Clone)]
-pub struct KeypairGenerator {
+struct KeypairGenerator {
     seed: u64,
 }
 
 impl KeypairGenerator {
-    pub fn new(seed: u64) -> Self {
+    fn new(seed: u64) -> Self {
         Self { seed }
     }
 }
@@ -39,15 +40,14 @@ impl Iterator for KeypairGenerator {
     type Item = KeyPair;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buf = [0_u8; 32];
+        let mut buf = [0_u8; SEED_LENGTH];
         LittleEndian::write_u64(&mut buf, self.seed);
-        self.seed = self.seed.overflowing_add(1).0;
-        let (pk, sk) = gen_keypair_from_seed(&Seed::new(buf));
-
-        Some(KeyPair::from_keys(pk, sk))
+        self.seed += 1;
+        Some(KeyPair::from_seed(&Seed::new(buf)))
     }
 }
 
+/// Generator for `CreateWallet` transactions.
 pub struct CreateWalletGenerator {
     service_id: u32,
     generator: KeypairGenerator,
@@ -67,13 +67,15 @@ impl Iterator for CreateWalletGenerator {
 
     fn next(&mut self) -> Option<Self::Item> {
         let keys = self.generator.next()?;
+        let current_time = Instant::now().elapsed().as_nanos();
         Some(keys.create_wallet(
             self.service_id,
-            CreateWallet::new(&format!("{}", &keys.public_key())),
+            CreateWallet::new(&format!("{}_{}", &keys.public_key(), current_time)),
         ))
     }
 }
 
+/// Config for `TransferGenerator`.
 pub struct TransferGeneratorConfig {
     pub service_id: u32,
     pub seed: u64,
@@ -81,6 +83,7 @@ pub struct TransferGeneratorConfig {
     pub wallets_count: usize,
 }
 
+/// Generator for `Transfer` transactions.
 #[derive(Clone)]
 pub struct TransferGenerator {
     service_id: u32,
@@ -105,13 +108,13 @@ impl TransferGenerator {
         }
     }
 
-    fn gen_keypair(&self, offset: u64) -> (PublicKey, SecretKey) {
-        let mut buf = [0_u8; 32];
+    fn gen_keypair(&self, offset: u64) -> KeyPair {
+        let mut buf = [0_u8; SEED_LENGTH];
         LittleEndian::write_u64(&mut buf, self.seed + offset);
-        gen_keypair_from_seed(&Seed::new(buf))
+        KeyPair::from_seed(&Seed::new(buf))
     }
 
-    pub fn random_owner(&mut self) -> usize {
+    fn random_owner(&mut self) -> usize {
         self.rand.gen_range(0, self.wallets_count)
     }
 }
@@ -128,9 +131,8 @@ impl Iterator for TransferGenerator {
                 continue;
             }
 
-            let (pk, sk) = self.gen_keypair(from as u64);
-            let keys = KeyPair::from_keys(pk, sk);
-            let to = CallerAddress::from_key(self.gen_keypair(to as u64).0);
+            let keys = self.gen_keypair(from as u64);
+            let to = CallerAddress::from_key(self.gen_keypair(to as u64).public_key());
             let seed = self.rand.gen();
             let amount = self.rand.gen_range(1, 10);
             let tx = keys.transfer(self.service_id, Transfer { to, amount, seed });

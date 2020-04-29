@@ -36,9 +36,8 @@
 use atomic_counter::{AtomicCounter, RelaxedCounter};
 use crossbeam::channel::{bounded, Sender, TryRecvError};
 use exonum::merkledb::BinaryValue;
+use exonum::messages::{AnyTx, Verified};
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
-use hex::encode;
-use log::{error, info, warn};
 use logger::init_custom_logger;
 use reqwest::blocking::Client;
 use serde_json::json;
@@ -86,9 +85,8 @@ impl Options {
     fn generator(&self, tx: &Sender<serde_json::Value>) {
         let gen = match self.transaction {
             Transaction::CreateWallet => {
-                let gen = CreateWalletGenerator::new(self.service_id, self.seed)
-                    .map(|tx| json!({ "tx_body": encode(tx.to_bytes()) }));
-                Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
+                let gen = CreateWalletGenerator::new(self.service_id, self.seed);
+                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
             }
             Transaction::Transfer {
                 wallets_count,
@@ -99,14 +97,15 @@ impl Options {
                     seed: self.seed,
                     wallets_count,
                     wallets_seed,
-                })
-                .map(|tx| json!({ "tx_body": encode(tx.to_bytes()) }));
-                Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
+                });
+                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
             }
         };
+
         for t in gen.take(self.count as usize) {
-            if let Err(e) = tx.send(t) {
-                error!("{}", e);
+            let tx_body = json!({ "tx_body": hex::encode(t.to_bytes())});
+            if let Err(e) = tx.send(tx_body) {
+                log::error!("{}", e);
             }
         }
     }
@@ -153,14 +152,14 @@ fn post_transaction(
         thread::sleep(Duration::from_micros(timeout));
     }
 
-    info!("tx: {}", &tx);
+    log::info!("tx: {}", &tx);
     let _ = client
         .post(url)
         .json(&tx)
         .send()
-        .map_err(|err| error!("{}", err))
+        .map_err(|err| log::error!("{}", err))
         .and_then(|response| {
-            info!("Response: {:?}", response);
+            log::info!("Response: {:?}", response);
             Ok(())
         });
 }
@@ -199,7 +198,7 @@ fn main() {
                     &time_ref,
                 ),
                 Err(e) => match e {
-                    TryRecvError::Empty => warn!("No messages"),
+                    TryRecvError::Empty => log::warn!("No messages"),
                     TryRecvError::Disconnected => break,
                 },
             }
