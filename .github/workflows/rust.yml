@@ -18,12 +18,13 @@ jobs:
       - name: Install protobuf
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
-               sudo apt install protobuf-compiler
+              sudo sudo add-apt-repository ppa:maarten-fonville/protobuf
+              sudo apt install protobuf-compiler
           elif [ "$RUNNER_OS" == "macOS" ]; then
-               brew install protobuf
+              brew install protobuf
           else
-               echo "$RUNNER_OS not supported"
-               exit 1
+              echo "$RUNNER_OS not supported"
+              exit 1
           fi
 
       - name: Run tests
@@ -71,12 +72,13 @@ jobs:
       - name: Install protobuf
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
-               apt install protobuf-compiler
+              sudo sudo add-apt-repository ppa:maarten-fonville/protobuf
+              sudo apt install protobuf-compiler
           elif [ "$RUNNER_OS" == "macOS" ]; then
                brew install protobuf
           else
-               echo "$RUNNER_OS not supported"
-               exit 1
+              echo "$RUNNER_OS not supported"
+              exit 1
           fi
 
       - name: Run cargo clippy
