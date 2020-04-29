@@ -1,6 +1,9 @@
 name: Rust
 
-on: [push, pull_request]
+on:
+  pull_request: []
+  push:
+    branches: [master, develop]
 
 jobs:
   tests:
@@ -49,6 +52,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --bin tx-generator
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
