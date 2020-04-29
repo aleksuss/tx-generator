@@ -24,6 +24,7 @@ jobs:
           else
                echo "$RUNNER_OS not supported"
                exit 1
+          fi
 
       - name: Run tests
         uses: actions-rs/cargo@v1
@@ -76,6 +77,7 @@ jobs:
           else
                echo "$RUNNER_OS not supported"
                exit 1
+          fi
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
