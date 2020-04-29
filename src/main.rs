@@ -12,12 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Util for hi-load streaming transactions into Exonum blockchain network.
+
+#![warn(
+    missing_debug_implementations,
+    missing_docs,
+    unsafe_code,
+    bare_trait_objects
+)]
+#![warn(clippy::pedantic, clippy::nursery)]
+#![allow(
+    // Next `cast_*` lints don't give alternatives.
+    clippy::cast_possible_wrap, clippy::cast_possible_truncation, clippy::cast_sign_loss,
+    // Next lints produce too much noise/false positives.
+    clippy::module_name_repetitions, clippy::similar_names, clippy::must_use_candidate,
+    clippy::pub_enum_variant_names,
+    // '... may panic' lints.
+    clippy::indexing_slicing,
+    // Too much work to fix.
+    clippy::missing_errors_doc, clippy::missing_const_for_fn
+)]
+
 use atomic_counter::{AtomicCounter, RelaxedCounter};
 use crossbeam::channel::{bounded, Sender, TryRecvError};
-use exonum::messages::to_hex_string;
+use exonum::merkledb::BinaryValue;
+use exonum::messages::{AnyTx, Verified};
 use generator::{CreateWalletGenerator, TransferGenerator, TransferGeneratorConfig};
-use log::{error, info, warn};
 use logger::init_custom_logger;
+use reqwest::blocking::Client;
 use serde_json::json;
 use std::{
     ops::Deref,
@@ -37,6 +59,9 @@ const CHANNEL_SIZE: usize = 500_000;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "tx-generator")]
 struct Options {
+    /// Service ID.
+    #[structopt(short = "i", long = "service_id", help = "Service ID.")]
+    service_id: u32,
     /// seed.
     #[structopt(short = "s", long = "seed", help = "Seed of random number generator.")]
     seed: u64,
@@ -57,29 +82,30 @@ struct Options {
 }
 
 impl Options {
-    pub fn generator(&self, tx: Sender<serde_json::Value>) {
+    fn generator(&self, tx: &Sender<serde_json::Value>) {
         let gen = match self.transaction {
             Transaction::CreateWallet => {
-                let gen = CreateWalletGenerator::new(self.seed)
-                    .map(|tx| json!({ "tx_body": to_hex_string(&tx) }));
-                Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
+                let gen = CreateWalletGenerator::new(self.service_id, self.seed);
+                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
             }
             Transaction::Transfer {
                 wallets_count,
                 wallets_seed,
             } => {
-                let gen = TransferGenerator::new(TransferGeneratorConfig {
+                let gen = TransferGenerator::new(&TransferGeneratorConfig {
+                    service_id: self.service_id,
                     seed: self.seed,
                     wallets_count,
                     wallets_seed,
-                })
-                .map(|tx| json!({ "tx_body": to_hex_string(&tx) }));
-                Box::new(gen) as Box<dyn Iterator<Item = serde_json::Value>>
+                });
+                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
             }
         };
+
         for t in gen.take(self.count as usize) {
-            if let Err(e) = tx.send(t) {
-                error!("{}", e);
+            let tx_body = json!({ "tx_body": hex::encode(t.to_bytes())});
+            if let Err(e) = tx.send(tx_body) {
+                log::error!("{}", e);
             }
         }
     }
@@ -101,9 +127,9 @@ enum Transaction {
 }
 
 fn post_transaction(
-    client: &reqwest::Client,
+    client: &Client,
     url: &str,
-    tx: serde_json::Value,
+    tx: &serde_json::Value,
     counter: &RelaxedCounter,
     timeout: Option<u64>,
     time: &Arc<Mutex<SystemTime>>,
@@ -126,14 +152,14 @@ fn post_transaction(
         thread::sleep(Duration::from_micros(timeout));
     }
 
-    info!("tx: {}", &tx);
+    log::info!("tx: {}", &tx);
     let _ = client
         .post(url)
         .json(&tx)
         .send()
-        .map_err(|err| error!("{}", err))
+        .map_err(|err| log::error!("{}", err))
         .and_then(|response| {
-            info!("Response: {:?}", response);
+            log::info!("Response: {:?}", response);
             Ok(())
         });
 }
@@ -148,7 +174,7 @@ fn main() {
     let timeout = opts.timeout;
 
     let gen_handler = thread::spawn(move || {
-        opts.generator(tx);
+        opts.generator(&tx);
     });
 
     let time = Arc::new(Mutex::new(SystemTime::now()));
@@ -159,20 +185,20 @@ fn main() {
         let time_ref = time.clone();
         let counter_ref = counter.clone();
         let tx_url = format!("http://{}/api/explorer/v1/transactions", host);
-        let client = reqwest::Client::new();
+        let client = Client::new();
         let tx_channel = rx.clone();
         handlers.push(thread::spawn(move || loop {
             match tx_channel.try_recv() {
                 Ok(tx) => post_transaction(
                     &client,
                     &tx_url,
-                    tx,
+                    &tx,
                     counter_ref.deref(),
                     timeout,
                     &time_ref,
                 ),
                 Err(e) => match e {
-                    TryRecvError::Empty => warn!("No messages"),
+                    TryRecvError::Empty => log::warn!("No messages"),
                     TryRecvError::Disconnected => break,
                 },
             }

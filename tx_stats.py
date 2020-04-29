@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-# This scripts outputs TPS stats in runtime
+# The script outputs TPS stats in runtime
 # Run example: ./tx_stats.py -n node.hostname.com:8080
 # Also possible to dump statistic into cvs files if you provide
-# path to file
+# path to the file
 # E.g. ./tx_stats.py -n node.hostname.com:8080 -o /path/to/stat.cvs
 
 import argparse
