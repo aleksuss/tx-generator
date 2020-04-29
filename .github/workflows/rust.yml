@@ -18,7 +18,7 @@ jobs:
       - name: Install protobuf
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
-               apt install protobuf-compiler
+               sudo apt install protobuf-compiler
           elif [ "$RUNNER_OS" == "macOS" ]; then
                brew install protobuf
           else
