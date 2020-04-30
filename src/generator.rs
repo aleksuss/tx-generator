@@ -31,7 +31,7 @@ struct KeypairGenerator {
 }
 
 impl KeypairGenerator {
-    fn new(seed: u64) -> Self {
+    const fn new(seed: u64) -> Self {
         Self { seed }
     }
 }
@@ -54,7 +54,7 @@ pub struct CreateWalletGenerator {
 }
 
 impl CreateWalletGenerator {
-    pub fn new(service_id: u32, seed: u64) -> Self {
+    pub const fn new(service_id: u32, seed: u64) -> Self {
         Self {
             service_id,
             generator: KeypairGenerator::new(seed),
@@ -79,8 +79,8 @@ impl Iterator for CreateWalletGenerator {
 pub struct TransferGeneratorConfig {
     pub service_id: u32,
     pub seed: u64,
-    pub wallets_seed: u64,
     pub wallets_count: usize,
+    pub wallets_seed: u64,
 }
 
 /// Generator for `Transfer` transactions.

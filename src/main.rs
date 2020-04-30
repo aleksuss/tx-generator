@@ -21,17 +21,7 @@
     bare_trait_objects
 )]
 #![warn(clippy::pedantic, clippy::nursery)]
-#![allow(
-    // Next `cast_*` lints don't give alternatives.
-    clippy::cast_possible_wrap, clippy::cast_possible_truncation, clippy::cast_sign_loss,
-    // Next lints produce too much noise/false positives.
-    clippy::module_name_repetitions, clippy::similar_names, clippy::must_use_candidate,
-    clippy::pub_enum_variant_names,
-    // '... may panic' lints.
-    clippy::indexing_slicing,
-    // Too much work to fix.
-    clippy::missing_errors_doc, clippy::missing_const_for_fn
-)]
+#![allow(clippy::module_name_repetitions)]
 
 use atomic_counter::{AtomicCounter, RelaxedCounter};
 use crossbeam::channel::{bounded, Sender, TryRecvError};
@@ -82,27 +72,27 @@ struct Options {
 }
 
 impl Options {
-    fn generator(&self, tx: &Sender<serde_json::Value>) {
-        let gen = match self.transaction {
+    fn create_tx_generator(&self) -> Box<dyn Iterator<Item = Verified<AnyTx>>> {
+        match self.transaction {
             Transaction::CreateWallet => {
-                let gen = CreateWalletGenerator::new(self.service_id, self.seed);
-                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
+                Box::new(CreateWalletGenerator::new(self.service_id, self.seed))
             }
             Transaction::Transfer {
                 wallets_count,
                 wallets_seed,
-            } => {
-                let gen = TransferGenerator::new(&TransferGeneratorConfig {
-                    service_id: self.service_id,
-                    seed: self.seed,
-                    wallets_count,
-                    wallets_seed,
-                });
-                Box::new(gen) as Box<dyn Iterator<Item = Verified<AnyTx>>>
-            }
-        };
+            } => Box::new(TransferGenerator::new(&TransferGeneratorConfig {
+                service_id: self.service_id,
+                seed: self.seed,
+                wallets_count,
+                wallets_seed,
+            })),
+        }
+    }
 
-        for t in gen.take(self.count as usize) {
+    fn generator(&self, tx: &Sender<serde_json::Value>) {
+        let tx_generator = self.create_tx_generator();
+
+        for t in tx_generator.take(self.count) {
             let tx_body = json!({ "tx_body": hex::encode(t.to_bytes())});
             if let Err(e) = tx.send(tx_body) {
                 log::error!("{}", e);
@@ -179,15 +169,13 @@ fn main() {
 
     let time = Arc::new(Mutex::new(SystemTime::now()));
     let counter = Arc::new(RelaxedCounter::new(0));
-    let mut handlers = Vec::new();
-
-    for host in hosts {
+    let handlers = hosts.iter().map(|host| {
         let time_ref = time.clone();
         let counter_ref = counter.clone();
         let tx_url = format!("http://{}/api/explorer/v1/transactions", host);
         let client = Client::new();
         let tx_channel = rx.clone();
-        handlers.push(thread::spawn(move || loop {
+        thread::spawn(move || loop {
             match tx_channel.try_recv() {
                 Ok(tx) => post_transaction(
                     &client,
@@ -202,8 +190,8 @@ fn main() {
                     TryRecvError::Disconnected => break,
                 },
             }
-        }));
-    }
+        })
+    });
 
     let _ = gen_handler.join();
     for handler in handlers {
