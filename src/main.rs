@@ -32,7 +32,6 @@ use logger::init_custom_logger;
 use reqwest::blocking::Client;
 use serde_json::json;
 use std::{
-    ops::Deref,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, SystemTime},
@@ -143,15 +142,11 @@ fn post_transaction(
     }
 
     log::info!("tx: {}", &tx);
-    let _ = client
-        .post(url)
-        .json(&tx)
-        .send()
-        .map_err(|err| log::error!("{}", err))
-        .and_then(|response| {
-            log::info!("Response: {:?}", response);
-            Ok(())
-        });
+
+    match client.post(url).json(&tx).send() {
+        Ok(response) => log::info!("Response: {:?}", response),
+        Err(e) => log::error!("{}", e),
+    }
 }
 
 fn main() {
@@ -177,14 +172,16 @@ fn main() {
         let tx_channel = rx.clone();
         thread::spawn(move || loop {
             match tx_channel.try_recv() {
-                Ok(tx) => post_transaction(
-                    &client,
-                    &tx_url,
-                    &tx,
-                    counter_ref.deref(),
-                    timeout,
-                    &time_ref,
-                ),
+                Ok(tx) => {
+                    post_transaction(
+                        &client,
+                        &tx_url,
+                        &tx,
+                        counter_ref.as_ref(),
+                        timeout,
+                        &time_ref,
+                    );
+                }
                 Err(e) => match e {
                     TryRecvError::Empty => log::warn!("No messages"),
                     TryRecvError::Disconnected => break,
@@ -193,8 +190,8 @@ fn main() {
         })
     });
 
-    let _ = gen_handler.join();
+    let _gen = gen_handler.join();
     for handler in handlers {
-        let _ = handler.join();
+        let _handler = handler.join();
     }
 }

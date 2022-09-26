@@ -115,7 +115,7 @@ impl TransferGenerator {
     }
 
     fn random_owner(&mut self) -> usize {
-        self.rand.gen_range(0, self.wallets_count)
+        self.rand.gen_range(0..self.wallets_count)
     }
 }
 
@@ -134,7 +134,7 @@ impl Iterator for TransferGenerator {
             let keys = self.gen_keypair(from as u64);
             let to = CallerAddress::from_key(self.gen_keypair(to as u64).public_key());
             let seed = self.rand.gen();
-            let amount = self.rand.gen_range(1, 10);
+            let amount = self.rand.gen_range(1..10);
             let tx = keys.transfer(self.service_id, Transfer { to, amount, seed });
             return Some(tx);
         }

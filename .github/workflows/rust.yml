@@ -1,7 +1,7 @@
 name: Rust
 
 on:
-  pull_request: []
+  pull_request:
   push:
     branches: [master, develop]
 
@@ -35,18 +35,6 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('Cargo.lock') }}
-
-      - name: Install protobuf
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-              sudo sudo add-apt-repository ppa:maarten-fonville/protobuf
-              sudo apt install protobuf-compiler
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-              brew install protobuf
-          else
-              echo "$RUNNER_OS not supported"
-              exit 1
-          fi
 
       - name: Run tests
         uses: actions-rs/cargo@v1
